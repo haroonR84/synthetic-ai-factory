@@ -12,7 +12,7 @@ client = OpenAI()
 # Streamlit Page Setup
 # -------------------------
 st.set_page_config(page_title="Synthetic AI System", layout="centered")
-st.title("Synthetic AI System (Data → Decision → Workflow)")
+st.title("Synthetic AI System (Data → Decision → Workflow → Risk)")
 
 # -------------------------
 # UI Controls
@@ -32,6 +32,17 @@ prompt_map = {
     "Support Ticket": "Create synthetic customer support tickets for an e-commerce app.",
     "Invoice": "Create synthetic invoices for a small IT services company."
 }
+
+structure_hint = """
+Output ONLY this structure.
+Repeat it for each record.
+
+NAME:
+ROLE:
+SKILLS:
+YEARS_EXPERIENCE:
+TOOLS:
+"""
 
 decision_prompt_template = """
 You are a strict AI decision engine for HR screening.
@@ -60,17 +71,6 @@ YEARS_EXPERIENCE: {YEARS_EXPERIENCE}
 TOOLS: {TOOLS}
 """
 
-structure_hint = """
-Output ONLY this structure.
-Repeat it for each record.
-
-NAME:
-ROLE:
-SKILLS:
-YEARS_EXPERIENCE:
-TOOLS:
-"""
-
 # -------------------------
 # Prompt Builder
 # -------------------------
@@ -86,7 +86,7 @@ Rules:
 """
 
 # -------------------------
-# Parser Function
+# Parse Generated Records
 # -------------------------
 def parse_records(text):
     records = []
@@ -153,7 +153,9 @@ def make_decision(record):
 
     return decision_data
 
-# 🔴 NEW — MILESTONE 4 STEP 1A
+# -------------------------
+# Workflow Engine
+# -------------------------
 def assign_workflow(decision):
     if decision == "Hire":
         return "Send to HR Interview Pipeline"
@@ -162,7 +164,6 @@ def assign_workflow(decision):
     else:
         return "Archive / Reject"
 
-# 🔴 NEW — MILESTONE 4 STEP 2A
 def workflow_metadata(action):
     if action == "Send to HR Interview Pipeline":
         return {
@@ -181,6 +182,29 @@ def workflow_metadata(action):
         }
 
 # -------------------------
+# Risk & Audit Engine (Milestone 5)
+# -------------------------
+def assess_risk(decision, confidence):
+    if decision == "Hire" and confidence < 70:
+        return {
+            "RISK_LEVEL": "High",
+            "AUDIT_FLAG": "Yes",
+            "AUDIT_REASON": "Hire decision with low confidence"
+        }
+    elif decision == "Review":
+        return {
+            "RISK_LEVEL": "Medium",
+            "AUDIT_FLAG": "Yes",
+            "AUDIT_REASON": "Manual review required"
+        }
+    else:
+        return {
+            "RISK_LEVEL": "Low",
+            "AUDIT_FLAG": "No",
+            "AUDIT_REASON": "Decision within acceptable risk"
+        }
+
+# -------------------------
 # Generate Button
 # -------------------------
 if st.button("Generate"):
@@ -193,44 +217,44 @@ if st.button("Generate"):
     raw_output = response.output_text
     records = parse_records(raw_output)
 
-    decision_results = []
+    final_results = []
 
     for record in records:
         decision = make_decision(record)
         workflow = assign_workflow(decision["DECISION"])
         metadata = workflow_metadata(workflow)
+        risk = assess_risk(decision["DECISION"], decision["CONFIDENCE_SCORE"])
 
         combined = {
             **record,
             **decision,
             "WORKFLOW_ACTION": workflow,
-            **metadata
+            **metadata,
+            **risk
         }
 
-        decision_results.append(combined)
+        final_results.append(combined)
 
-    if decision_results:
-        df = pd.DataFrame(decision_results)
+    if final_results:
+        df = pd.DataFrame(final_results)
 
-        st.subheader("Decision & Workflow Dataset")
+        st.subheader("Full Decision, Workflow & Risk Dataset")
         st.dataframe(df)
 
-        # CSV Download
         csv = df.to_csv(index=False).encode("utf-8")
         st.download_button(
             "Download CSV",
             data=csv,
-            file_name="workflow_data.csv",
+            file_name="synthetic_ai_system.csv",
             mime="text/csv"
         )
 
-        # Excel Download
         excel_buffer = BytesIO()
         df.to_excel(excel_buffer, index=False)
         st.download_button(
             "Download Excel",
             data=excel_buffer.getvalue(),
-            file_name="workflow_data.xlsx",
+            file_name="synthetic_ai_system.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
     else:
