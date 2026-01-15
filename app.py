@@ -32,7 +32,36 @@ prompt_map = {
     "Support Ticket": "Create synthetic customer support tickets for an e-commerce app.",
     "Invoice": "Create synthetic invoices for a small IT services company."
 }
+decision_prompt_template = """
+You are a strict AI decision engine for HR screening.
 
+Decision Rules:
+- Hire: Strong skill match AND experience >= 2 years
+- Review: Partial skill match OR experience between 1–2 years
+- Reject: Weak skill match OR experience < 1 year
+
+Confidence Score Rules:
+- Hire: 75–95
+- Review: 45–74
+- Reject: 10–44
+
+Instructions:
+- Apply rules consistently
+- Do not invent criteria
+- Output ONLY the structure below
+
+STRUCTURE:
+DECISION:
+CONFIDENCE_SCORE:
+REASON:
+
+CANDIDATE DATA:
+NAME: {NAME}
+ROLE: {ROLE}
+SKILLS: {SKILLS}
+YEARS_EXPERIENCE: {YEARS_EXPERIENCE}
+TOOLS: {TOOLS}
+"""
 structure_hint = """
 Output ONLY the following structure.
 Repeat the structure exactly for each record.
@@ -84,7 +113,41 @@ def parse_records(text):
             current = {}
 
     return records
+def make_decision(record):
+    prompt = decision_prompt_template.format(**record)
 
+    response = client.responses.create(
+        model="gpt-4.1-mini",
+        input=prompt
+    )
+    output = response.output_text
+    decision_data = {}
+
+    for line in output.splitlines():
+        if ":" not in line:
+            continu
+        key, value = line.split(":", 1)
+        clean_key = key.strip().upper()
+        clean_value = value.strip()
+        if clean_key == "DECISION":
+            if clean_value.lower() in ["hire", "accept"]:
+                clean_value = "Hire"
+            elif clean_value.lower() == "review":
+                clean_value = "Review"
+            else:
+                clean_value = "Reject"
+
+        if clean_key == "CONFIDENCE_SCORE":
+            digits = "".join(filter(str.isdigit, clean_value))
+            if digits:
+                score = int(digits)
+                clean_value = score * 10 if score <= 10 else score
+            else:
+                clean_value = 0
+
+        decision_data[clean_key] = clean_value
+
+    return decision_data
 # -------------------------
 # Generate Button
 # -------------------------
@@ -98,10 +161,16 @@ if st.button("Generate"):
     raw_output = response.output_text
     records = parse_records(raw_output)
 
-    if records:
-        df = pd.DataFrame(records)
+    decision_results = []
 
-        st.subheader("Structured Dataset Preview")
+    for record in records:
+        decision = make_decision(record)
+        combined = {**record, **decision}
+        decision_results.append(combined)
+
+    if decision_results:
+        df = pd.DataFrame(decision_results)
+        st.subheader("Decision Dataset Preview")
         st.dataframe(df)
 
         # CSV Download
@@ -109,7 +178,7 @@ if st.button("Generate"):
         st.download_button(
             "Download CSV",
             data=csv,
-            file_name="synthetic_data.csv",
+            file_name="decision_data.csv",
             mime="text/csv"
         )
 
@@ -119,8 +188,8 @@ if st.button("Generate"):
         st.download_button(
             "Download Excel",
             data=excel_buffer.getvalue(),
-            file_name="synthetic_data.xlsx",
+            file_name="decision_data.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
     else:
-        st.error("No structured records returned. Try again.")
+        st.error("No decisions could be generated.")
