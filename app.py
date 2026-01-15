@@ -14,7 +14,7 @@ client = OpenAI()
 # Streamlit Page Setup
 # -------------------------
 st.set_page_config(page_title="Synthetic AI System", layout="centered")
-st.title("Synthetic AI System (Decision • Workflow • Risk • Compliance • SLA)")
+st.title("Synthetic AI System (Decision • Workflow • Risk • Compliance • SLA • Alerts)")
 
 # -------------------------
 # UI Controls
@@ -181,7 +181,7 @@ def assess_compliance(decision, confidence, risk):
         return {"COMPLIANCE_STATUS": "Compliant", "COMPLIANCE_SCORE": 85, "ESCALATION_REQUIRED": "No", "COMPLIANCE_REASON": "Within rejection policy"}
 
 # -------------------------
-# 🆕 SLA & Monitoring Engine (Milestone 7)
+# SLA Engine
 # -------------------------
 def assess_sla(workflow_stage):
     created_at = datetime.now() - timedelta(hours=random.randint(0, 72))
@@ -206,6 +206,32 @@ def assess_sla(workflow_stage):
         }
 
 # -------------------------
+# 🆕 ALERT & ESCALATION ENGINE (Milestone 8)
+# -------------------------
+def assess_alerts(sla_status, risk_level):
+    if sla_status == "Breached" and risk_level == "High":
+        return {
+            "ALERT_REQUIRED": "Yes",
+            "ALERT_SEVERITY": "Critical",
+            "ESCALATION_LEVEL": "Director",
+            "ESCALATION_REASON": "High risk SLA breach"
+        }
+    elif sla_status == "Breached":
+        return {
+            "ALERT_REQUIRED": "Yes",
+            "ALERT_SEVERITY": "High",
+            "ESCALATION_LEVEL": "Manager",
+            "ESCALATION_REASON": "SLA breach detected"
+        }
+    else:
+        return {
+            "ALERT_REQUIRED": "No",
+            "ALERT_SEVERITY": "Low",
+            "ESCALATION_LEVEL": "None",
+            "ESCALATION_REASON": "No action required"
+        }
+
+# -------------------------
 # Generate Button
 # -------------------------
 if st.button("Generate"):
@@ -220,6 +246,7 @@ if st.button("Generate"):
         risk = assess_risk(decision["DECISION"], decision["CONFIDENCE_SCORE"])
         compliance = assess_compliance(decision["DECISION"], decision["CONFIDENCE_SCORE"], risk["RISK_LEVEL"])
         sla = assess_sla(wf_meta["WORKFLOW_STAGE"])
+        alerts = assess_alerts(sla["SLA_STATUS"], risk["RISK_LEVEL"])
 
         results.append({
             **r,
@@ -228,13 +255,14 @@ if st.button("Generate"):
             **wf_meta,
             **risk,
             **compliance,
-            **sla
+            **sla,
+            **alerts
         })
 
     df = pd.DataFrame(results)
     st.dataframe(df)
 
-    st.download_button("Download CSV", df.to_csv(index=False).encode("utf-8"), "synthetic_sla_system.csv")
+    st.download_button("Download CSV", df.to_csv(index=False).encode("utf-8"), "synthetic_alert_system.csv")
     excel = BytesIO()
     df.to_excel(excel, index=False)
-    st.download_button("Download Excel", excel.getvalue(), "synthetic_sla_system.xlsx")
+    st.download_button("Download Excel", excel.getvalue(), "synthetic_alert_system.xlsx")
