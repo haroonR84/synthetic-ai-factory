@@ -2,6 +2,8 @@ import streamlit as st
 import pandas as pd
 from io import BytesIO
 from openai import OpenAI
+from datetime import datetime, timedelta
+import random
 
 # -------------------------
 # OpenAI Client
@@ -12,7 +14,7 @@ client = OpenAI()
 # Streamlit Page Setup
 # -------------------------
 st.set_page_config(page_title="Synthetic AI System", layout="centered")
-st.title("Synthetic AI System (Decision • Workflow • Risk • Compliance)")
+st.title("Synthetic AI System (Decision • Workflow • Risk • Compliance • SLA)")
 
 # -------------------------
 # UI Controls
@@ -86,7 +88,7 @@ Rules:
 """
 
 # -------------------------
-# Parse Generated Records
+# Parse Records
 # -------------------------
 def parse_records(text):
     records = []
@@ -96,19 +98,15 @@ def parse_records(text):
         line = line.strip()
         if not line:
             continue
-
         if ":" in line:
-            key, value = line.split(":", 1)
-            key = key.strip().upper()
-            value = value.strip()
-
-            if key in ["NAME", "ROLE", "SKILLS", "YEARS_EXPERIENCE", "TOOLS"]:
-                current[key] = value
-
+            k, v = line.split(":", 1)
+            k = k.strip().upper()
+            v = v.strip()
+            if k in ["NAME", "ROLE", "SKILLS", "YEARS_EXPERIENCE", "TOOLS"]:
+                current[k] = v
         if len(current) == 5:
             records.append(current)
             current = {}
-
     return records
 
 # -------------------------
@@ -116,22 +114,16 @@ def parse_records(text):
 # -------------------------
 def make_decision(record):
     prompt = decision_prompt_template.format(**record)
-
-    response = client.responses.create(
-        model="gpt-4.1-mini",
-        input=prompt
-    )
-
+    response = client.responses.create(model="gpt-4.1-mini", input=prompt)
     output = response.output_text
-    decision_data = {}
 
+    data = {}
     for line in output.splitlines():
         if ":" not in line:
             continue
-
-        key, value = line.split(":", 1)
-        k = key.strip().upper()
-        v = value.strip()
+        k, v = line.split(":", 1)
+        k = k.strip().upper()
+        v = v.strip()
 
         if k == "DECISION":
             if v.lower() in ["hire", "accept"]:
@@ -145,20 +137,18 @@ def make_decision(record):
             digits = "".join(filter(str.isdigit, v))
             v = int(digits) * 10 if digits and int(digits) <= 10 else int(digits or 0)
 
-        decision_data[k] = v
-
-    return decision_data
+        data[k] = v
+    return data
 
 # -------------------------
 # Workflow Engine
 # -------------------------
 def assign_workflow(decision):
-    if decision == "Hire":
-        return "Send to HR Interview Pipeline"
-    elif decision == "Review":
-        return "Send to Manual Review Queue"
-    else:
-        return "Archive / Reject"
+    return (
+        "Send to HR Interview Pipeline" if decision == "Hire"
+        else "Send to Manual Review Queue" if decision == "Review"
+        else "Archive / Reject"
+    )
 
 def workflow_metadata(action):
     if action == "Send to HR Interview Pipeline":
@@ -169,7 +159,7 @@ def workflow_metadata(action):
         return {"WORKFLOW_STAGE": "Closed", "OWNER_TEAM": "System"}
 
 # -------------------------
-# Risk & Audit Engine
+# Risk Engine
 # -------------------------
 def assess_risk(decision, confidence):
     if decision == "Hire" and confidence < 70:
@@ -180,71 +170,71 @@ def assess_risk(decision, confidence):
         return {"RISK_LEVEL": "Low", "AUDIT_FLAG": "No", "AUDIT_REASON": "Acceptable risk"}
 
 # -------------------------
-# 🆕 Compliance & Policy Engine (Milestone 6)
+# Compliance Engine
 # -------------------------
 def assess_compliance(decision, confidence, risk):
     if decision == "Hire" and confidence >= 75 and risk == "Low":
-        return {
-            "COMPLIANCE_STATUS": "Compliant",
-            "COMPLIANCE_SCORE": 95,
-            "ESCALATION_REQUIRED": "No",
-            "COMPLIANCE_REASON": "Decision meets hiring policy thresholds"
-        }
+        return {"COMPLIANCE_STATUS": "Compliant", "COMPLIANCE_SCORE": 95, "ESCALATION_REQUIRED": "No", "COMPLIANCE_REASON": "Meets policy"}
     elif decision == "Review":
+        return {"COMPLIANCE_STATUS": "Conditional", "COMPLIANCE_SCORE": 70, "ESCALATION_REQUIRED": "Yes", "COMPLIANCE_REASON": "Manual approval required"}
+    else:
+        return {"COMPLIANCE_STATUS": "Compliant", "COMPLIANCE_SCORE": 85, "ESCALATION_REQUIRED": "No", "COMPLIANCE_REASON": "Within rejection policy"}
+
+# -------------------------
+# 🆕 SLA & Monitoring Engine (Milestone 7)
+# -------------------------
+def assess_sla(workflow_stage):
+    created_at = datetime.now() - timedelta(hours=random.randint(0, 72))
+    sla_hours = 24 if workflow_stage == "Interview" else 48
+    elapsed = int((datetime.now() - created_at).total_seconds() / 3600)
+
+    if elapsed > sla_hours:
         return {
-            "COMPLIANCE_STATUS": "Conditional",
-            "COMPLIANCE_SCORE": 70,
-            "ESCALATION_REQUIRED": "Yes",
-            "COMPLIANCE_REASON": "Manual approval required by policy"
+            "CREATED_AT": created_at.strftime("%Y-%m-%d %H:%M"),
+            "SLA_HOURS": sla_hours,
+            "ELAPSED_HOURS": elapsed,
+            "SLA_STATUS": "Breached",
+            "SLA_REASON": "Exceeded allowed processing time"
         }
     else:
         return {
-            "COMPLIANCE_STATUS": "Compliant",
-            "COMPLIANCE_SCORE": 85,
-            "ESCALATION_REQUIRED": "No",
-            "COMPLIANCE_REASON": "Decision within rejection policy"
+            "CREATED_AT": created_at.strftime("%Y-%m-%d %H:%M"),
+            "SLA_HOURS": sla_hours,
+            "ELAPSED_HOURS": elapsed,
+            "SLA_STATUS": "On Track",
+            "SLA_REASON": "Within SLA window"
         }
 
 # -------------------------
 # Generate Button
 # -------------------------
 if st.button("Generate"):
-    with st.spinner("Generating with OpenAI (fast)..."):
-        response = client.responses.create(
-            model="gpt-4.1-mini",
-            input=prompt
-        )
-
+    response = client.responses.create(model="gpt-4.1-mini", input=prompt)
     records = parse_records(response.output_text)
-    results = []
 
-    for record in records:
-        decision = make_decision(record)
+    results = []
+    for r in records:
+        decision = make_decision(r)
         workflow = assign_workflow(decision["DECISION"])
-        workflow_meta = workflow_metadata(workflow)
+        wf_meta = workflow_metadata(workflow)
         risk = assess_risk(decision["DECISION"], decision["CONFIDENCE_SCORE"])
-        compliance = assess_compliance(
-            decision["DECISION"],
-            decision["CONFIDENCE_SCORE"],
-            risk["RISK_LEVEL"]
-        )
+        compliance = assess_compliance(decision["DECISION"], decision["CONFIDENCE_SCORE"], risk["RISK_LEVEL"])
+        sla = assess_sla(wf_meta["WORKFLOW_STAGE"])
 
         results.append({
-            **record,
+            **r,
             **decision,
             "WORKFLOW_ACTION": workflow,
-            **workflow_meta,
+            **wf_meta,
             **risk,
-            **compliance
+            **compliance,
+            **sla
         })
 
-    if results:
-        df = pd.DataFrame(results)
-        st.dataframe(df)
+    df = pd.DataFrame(results)
+    st.dataframe(df)
 
-        csv = df.to_csv(index=False).encode("utf-8")
-        st.download_button("Download CSV", csv, "synthetic_compliance_system.csv")
-
-        excel = BytesIO()
-        df.to_excel(excel, index=False)
-        st.download_button("Download Excel", excel.getvalue(), "synthetic_compliance_system.xlsx")
+    st.download_button("Download CSV", df.to_csv(index=False).encode("utf-8"), "synthetic_sla_system.csv")
+    excel = BytesIO()
+    df.to_excel(excel, index=False)
+    st.download_button("Download Excel", excel.getvalue(), "synthetic_sla_system.xlsx")
