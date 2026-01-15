@@ -11,8 +11,8 @@ client = OpenAI()
 # -------------------------
 # Streamlit Page Setup
 # -------------------------
-st.set_page_config(page_title="Synthetic Text Generator", layout="centered")
-st.title("Synthetic Text Data Generator (Fast Mode)")
+st.set_page_config(page_title="Synthetic AI System", layout="centered")
+st.title("Synthetic AI System (Data → Decision → Workflow)")
 
 # -------------------------
 # UI Controls
@@ -32,6 +32,7 @@ prompt_map = {
     "Support Ticket": "Create synthetic customer support tickets for an e-commerce app.",
     "Invoice": "Create synthetic invoices for a small IT services company."
 }
+
 decision_prompt_template = """
 You are a strict AI decision engine for HR screening.
 
@@ -45,12 +46,8 @@ Confidence Score Rules:
 - Review: 45–74
 - Reject: 10–44
 
-Instructions:
-- Apply rules consistently
-- Do not invent criteria
-- Output ONLY the structure below
+Output ONLY this structure:
 
-STRUCTURE:
 DECISION:
 CONFIDENCE_SCORE:
 REASON:
@@ -62,10 +59,10 @@ SKILLS: {SKILLS}
 YEARS_EXPERIENCE: {YEARS_EXPERIENCE}
 TOOLS: {TOOLS}
 """
+
 structure_hint = """
-Output ONLY the following structure.
-Repeat the structure exactly for each record.
-Do not include explanations or extra text.
+Output ONLY this structure.
+Repeat it for each record.
 
 NAME:
 ROLE:
@@ -113,6 +110,10 @@ def parse_records(text):
             current = {}
 
     return records
+
+# -------------------------
+# Decision Engine
+# -------------------------
 def make_decision(record):
     prompt = decision_prompt_template.format(**record)
 
@@ -120,15 +121,18 @@ def make_decision(record):
         model="gpt-4.1-mini",
         input=prompt
     )
+
     output = response.output_text
     decision_data = {}
 
     for line in output.splitlines():
         if ":" not in line:
-            continu
+            continue
+
         key, value = line.split(":", 1)
         clean_key = key.strip().upper()
         clean_value = value.strip()
+
         if clean_key == "DECISION":
             if clean_value.lower() in ["hire", "accept"]:
                 clean_value = "Hire"
@@ -148,6 +152,34 @@ def make_decision(record):
         decision_data[clean_key] = clean_value
 
     return decision_data
+
+# 🔴 NEW — MILESTONE 4 STEP 1A
+def assign_workflow(decision):
+    if decision == "Hire":
+        return "Send to HR Interview Pipeline"
+    elif decision == "Review":
+        return "Send to Manual Review Queue"
+    else:
+        return "Archive / Reject"
+
+# 🔴 NEW — MILESTONE 4 STEP 2A
+def workflow_metadata(action):
+    if action == "Send to HR Interview Pipeline":
+        return {
+            "WORKFLOW_STAGE": "Interview",
+            "OWNER_TEAM": "HR"
+        }
+    elif action == "Send to Manual Review Queue":
+        return {
+            "WORKFLOW_STAGE": "Manual Review",
+            "OWNER_TEAM": "Hiring Manager"
+        }
+    else:
+        return {
+            "WORKFLOW_STAGE": "Closed",
+            "OWNER_TEAM": "System"
+        }
+
 # -------------------------
 # Generate Button
 # -------------------------
@@ -165,12 +197,22 @@ if st.button("Generate"):
 
     for record in records:
         decision = make_decision(record)
-        combined = {**record, **decision}
+        workflow = assign_workflow(decision["DECISION"])
+        metadata = workflow_metadata(workflow)
+
+        combined = {
+            **record,
+            **decision,
+            "WORKFLOW_ACTION": workflow,
+            **metadata
+        }
+
         decision_results.append(combined)
 
     if decision_results:
         df = pd.DataFrame(decision_results)
-        st.subheader("Decision Dataset Preview")
+
+        st.subheader("Decision & Workflow Dataset")
         st.dataframe(df)
 
         # CSV Download
@@ -178,7 +220,7 @@ if st.button("Generate"):
         st.download_button(
             "Download CSV",
             data=csv,
-            file_name="decision_data.csv",
+            file_name="workflow_data.csv",
             mime="text/csv"
         )
 
@@ -188,8 +230,8 @@ if st.button("Generate"):
         st.download_button(
             "Download Excel",
             data=excel_buffer.getvalue(),
-            file_name="decision_data.xlsx",
+            file_name="workflow_data.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
     else:
-        st.error("No decisions could be generated.")
+        st.error("No data generated.")
