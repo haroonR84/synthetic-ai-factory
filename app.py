@@ -12,7 +12,7 @@ client = OpenAI()
 # Streamlit Page Setup
 # -------------------------
 st.set_page_config(page_title="Synthetic AI System", layout="centered")
-st.title("Synthetic AI System (Data → Decision → Workflow → Risk)")
+st.title("Synthetic AI System (Decision • Workflow • Risk • Compliance)")
 
 # -------------------------
 # UI Controls
@@ -130,26 +130,22 @@ def make_decision(record):
             continue
 
         key, value = line.split(":", 1)
-        clean_key = key.strip().upper()
-        clean_value = value.strip()
+        k = key.strip().upper()
+        v = value.strip()
 
-        if clean_key == "DECISION":
-            if clean_value.lower() in ["hire", "accept"]:
-                clean_value = "Hire"
-            elif clean_value.lower() == "review":
-                clean_value = "Review"
+        if k == "DECISION":
+            if v.lower() in ["hire", "accept"]:
+                v = "Hire"
+            elif v.lower() == "review":
+                v = "Review"
             else:
-                clean_value = "Reject"
+                v = "Reject"
 
-        if clean_key == "CONFIDENCE_SCORE":
-            digits = "".join(filter(str.isdigit, clean_value))
-            if digits:
-                score = int(digits)
-                clean_value = score * 10 if score <= 10 else score
-            else:
-                clean_value = 0
+        if k == "CONFIDENCE_SCORE":
+            digits = "".join(filter(str.isdigit, v))
+            v = int(digits) * 10 if digits and int(digits) <= 10 else int(digits or 0)
 
-        decision_data[clean_key] = clean_value
+        decision_data[k] = v
 
     return decision_data
 
@@ -166,42 +162,47 @@ def assign_workflow(decision):
 
 def workflow_metadata(action):
     if action == "Send to HR Interview Pipeline":
-        return {
-            "WORKFLOW_STAGE": "Interview",
-            "OWNER_TEAM": "HR"
-        }
+        return {"WORKFLOW_STAGE": "Interview", "OWNER_TEAM": "HR"}
     elif action == "Send to Manual Review Queue":
-        return {
-            "WORKFLOW_STAGE": "Manual Review",
-            "OWNER_TEAM": "Hiring Manager"
-        }
+        return {"WORKFLOW_STAGE": "Manual Review", "OWNER_TEAM": "Hiring Manager"}
     else:
-        return {
-            "WORKFLOW_STAGE": "Closed",
-            "OWNER_TEAM": "System"
-        }
+        return {"WORKFLOW_STAGE": "Closed", "OWNER_TEAM": "System"}
 
 # -------------------------
-# Risk & Audit Engine (Milestone 5)
+# Risk & Audit Engine
 # -------------------------
 def assess_risk(decision, confidence):
     if decision == "Hire" and confidence < 70:
+        return {"RISK_LEVEL": "High", "AUDIT_FLAG": "Yes", "AUDIT_REASON": "Low confidence hire"}
+    elif decision == "Review":
+        return {"RISK_LEVEL": "Medium", "AUDIT_FLAG": "Yes", "AUDIT_REASON": "Manual review"}
+    else:
+        return {"RISK_LEVEL": "Low", "AUDIT_FLAG": "No", "AUDIT_REASON": "Acceptable risk"}
+
+# -------------------------
+# 🆕 Compliance & Policy Engine (Milestone 6)
+# -------------------------
+def assess_compliance(decision, confidence, risk):
+    if decision == "Hire" and confidence >= 75 and risk == "Low":
         return {
-            "RISK_LEVEL": "High",
-            "AUDIT_FLAG": "Yes",
-            "AUDIT_REASON": "Hire decision with low confidence"
+            "COMPLIANCE_STATUS": "Compliant",
+            "COMPLIANCE_SCORE": 95,
+            "ESCALATION_REQUIRED": "No",
+            "COMPLIANCE_REASON": "Decision meets hiring policy thresholds"
         }
     elif decision == "Review":
         return {
-            "RISK_LEVEL": "Medium",
-            "AUDIT_FLAG": "Yes",
-            "AUDIT_REASON": "Manual review required"
+            "COMPLIANCE_STATUS": "Conditional",
+            "COMPLIANCE_SCORE": 70,
+            "ESCALATION_REQUIRED": "Yes",
+            "COMPLIANCE_REASON": "Manual approval required by policy"
         }
     else:
         return {
-            "RISK_LEVEL": "Low",
-            "AUDIT_FLAG": "No",
-            "AUDIT_REASON": "Decision within acceptable risk"
+            "COMPLIANCE_STATUS": "Compliant",
+            "COMPLIANCE_SCORE": 85,
+            "ESCALATION_REQUIRED": "No",
+            "COMPLIANCE_REASON": "Decision within rejection policy"
         }
 
 # -------------------------
@@ -214,48 +215,36 @@ if st.button("Generate"):
             input=prompt
         )
 
-    raw_output = response.output_text
-    records = parse_records(raw_output)
-
-    final_results = []
+    records = parse_records(response.output_text)
+    results = []
 
     for record in records:
         decision = make_decision(record)
         workflow = assign_workflow(decision["DECISION"])
-        metadata = workflow_metadata(workflow)
+        workflow_meta = workflow_metadata(workflow)
         risk = assess_risk(decision["DECISION"], decision["CONFIDENCE_SCORE"])
+        compliance = assess_compliance(
+            decision["DECISION"],
+            decision["CONFIDENCE_SCORE"],
+            risk["RISK_LEVEL"]
+        )
 
-        combined = {
+        results.append({
             **record,
             **decision,
             "WORKFLOW_ACTION": workflow,
-            **metadata,
-            **risk
-        }
+            **workflow_meta,
+            **risk,
+            **compliance
+        })
 
-        final_results.append(combined)
-
-    if final_results:
-        df = pd.DataFrame(final_results)
-
-        st.subheader("Full Decision, Workflow & Risk Dataset")
+    if results:
+        df = pd.DataFrame(results)
         st.dataframe(df)
 
         csv = df.to_csv(index=False).encode("utf-8")
-        st.download_button(
-            "Download CSV",
-            data=csv,
-            file_name="synthetic_ai_system.csv",
-            mime="text/csv"
-        )
+        st.download_button("Download CSV", csv, "synthetic_compliance_system.csv")
 
-        excel_buffer = BytesIO()
-        df.to_excel(excel_buffer, index=False)
-        st.download_button(
-            "Download Excel",
-            data=excel_buffer.getvalue(),
-            file_name="synthetic_ai_system.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        )
-    else:
-        st.error("No data generated.")
+        excel = BytesIO()
+        df.to_excel(excel, index=False)
+        st.download_button("Download Excel", excel.getvalue(), "synthetic_compliance_system.xlsx")
